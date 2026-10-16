@@ -1,11 +1,45 @@
 import importlib.util
 import json
 import logging
+import os
+import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlsplit
 
 logger = logging.getLogger(__name__)
+
+# Only people signed in to the app may use these functions, so a stranger with the link cannot spend the API key.
+# The app's Supabase project confirms the sign-in token; its URL and publishable key are public by design.
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://balctnrvfvzvtaolsrgg.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_ywsmooShGztUuNIwqsj1mA_Uw-1L5fc")
+_CONFIRMED = {}  # token -> when Supabase last confirmed it, so a burst of requests checks once a minute
+
+
+def signed_in(authorization):
+    """True if the request carries a live sign-in, False if not, None if Supabase could not be reached."""
+    token = authorization[7:].strip() if authorization and authorization.startswith("Bearer ") else ""
+    if not token or len(token) > 4096:
+        return False
+    now = time.time()
+    if _CONFIRMED.get(token, 0) > now - 60:
+        return True
+    request = urllib.request.Request(SUPABASE_URL + "/auth/v1/user", headers={"apikey": SUPABASE_KEY, "Authorization": "Bearer " + token})
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            if response.status != 200:
+                return False
+    except urllib.error.HTTPError:
+        return False
+    except Exception:
+        logger.exception("Could not reach Supabase to check the sign-in")
+        return None
+    if len(_CONFIRMED) > 1000:
+        _CONFIRMED.clear()
+    _CONFIRMED[token] = now
+    return True
 SERVER_PATH = Path(__file__).resolve().parents[1] / "wardrobe-server.py"
 SPEC = importlib.util.spec_from_file_location("wardrobe_local_server", SERVER_PATH)
 if SPEC is None or SPEC.loader is None:
@@ -36,6 +70,11 @@ class handler(BaseHTTPRequestHandler):
             return self.send_json(404, {"code": "not_found", "error": "Not found"})
         if not self.is_same_origin():
             return self.send_json(403, {"code": "forbidden", "error": "Forbidden"})
+        allowed = signed_in(self.headers.get("Authorization"))
+        if allowed is None:
+            return self.send_json(503, {"code": "offline", "error": "Could not check your sign-in"})
+        if not allowed:
+            return self.send_json(401, {"code": "signed_out", "error": "Sign in to use this"})
         try:
             size = int(self.headers.get("Content-Length", "0"))
         except ValueError:

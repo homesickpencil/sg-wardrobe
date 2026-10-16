@@ -1,9 +1,10 @@
 # Singapore Wardrobe App
 
-This is a static, mobile-friendly wardrobe app with server-backed AI styling and
-shopping checks. User closet items and profile information stay in that user's
-browser storage. AI requests send the information needed for the requested
-styling task to Anthropic; the Anthropic API key stays on the server.
+This is a mobile-friendly wardrobe app with server-backed AI styling and
+shopping checks. Each person's closet, photos and measurements are saved to
+their account in Supabase (see below). AI requests send the information needed
+for the requested styling task to Anthropic; the Anthropic API key stays on the
+server.
 
 ## Deploy as a public Vercel webpage
 
@@ -12,8 +13,9 @@ styling task to Anthropic; the Anthropic API key stays on the server.
 2. In Vercel, open **Settings → Environment Variables** and add:
    - `ANTHROPIC_API_KEY`: your Anthropic API key. Add it only in Vercel; never
      put it in `index.html` or commit it to Git.
-   - `ANTHROPIC_MODEL`: `claude-sonnet-4-20250514`, or another model enabled for
-     your Anthropic account.
+   - `ANTHROPIC_MODEL` (optional): leave it unset to use `claude-sonnet-5-5`.
+     The request uses Anthropic's automatic fallback (`fallbacks: "default"`),
+     so a different model must support that too.
 3. Deploy (or redeploy after adding/changing environment variables). Share the
    resulting Vercel URL; visitors should open that URL, not the local HTML file.
 4. Before sharing the demo publicly, set an appropriate Anthropic spend limit
@@ -21,8 +23,11 @@ styling task to Anthropic; the Anthropic API key stays on the server.
    unexpected API usage.
 
 Vercel serves `index.html` and the item photos as static files. The Python
-functions in `api/` handle AI styling and the shopping page lookup. The API key
-is read from the server environment and is never sent to the browser.
+functions in `api/` handle AI styling and the shopping page lookup, and only
+answer people signed in to the app: each request carries the person's Supabase
+sign-in token, which the function checks with Supabase before doing anything.
+The API key is read from the server environment and is never sent to the
+browser.
 
 ## Accounts and storage (Supabase)
 

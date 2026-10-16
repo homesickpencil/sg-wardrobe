@@ -737,7 +737,7 @@ let ctl = null;
 // outside Claude, wardrobe-server.py passes the prompt to the Claude program on this computer
 const localAI = {json: async (prompt, opt) => {
   let r, j;
-  try { r = await fetch('/api/style', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt}), signal: opt.signal}); j = await r.json(); }
+  try { r = await fetch('/api/style', {method: 'POST', headers: {'Content-Type': 'application/json', ...(window.authHeader ? await window.authHeader() : {})}, body: JSON.stringify({prompt}), signal: opt.signal}); j = await r.json(); }
   catch (e) { throw Object.assign(new Error('unreachable'), {code: e && e.name === 'AbortError' ? 'cancelled' : 'offline'}); }
   if (!r.ok) throw Object.assign(new Error(j.error || 'failed'), {code: j.code});
   const t = String(j.text), a = t.indexOf('{'), b = t.lastIndexOf('}');
@@ -758,7 +758,7 @@ async function runAI(occ) {
     else { AI[occ] = fits; aiNote.textContent = NOTE; toast(fits.length + ' new fits from AI'); }
   } catch (e) {
     const c = e && e.code;
-    aiNote.textContent = c === 'cancelled' ? NOTE : c === 'not_granted' ? 'Allow AI access to use this button.' : c === 'rate_limited' ? 'Too many requests. Try again in a moment.' : c === 'offline' ? 'AI service unavailable. Open the deployed app, or run wardrobe-server.py locally at http://localhost:8765.' : c === 'misconfigured' ? 'The AI service is not configured. Ask the app administrator to check the Anthropic API key.' : c === 'no_ai' ? 'Claude is not installed on this computer, so AI styling is off.' : c === 'timeout' ? 'AI took too long to answer. Your outfits are unchanged. Try again.' : 'Could not reach AI. Your outfits are unchanged.';
+    aiNote.textContent = c === 'cancelled' ? NOTE : c === 'not_granted' ? 'Allow AI access to use this button.' : c === 'rate_limited' ? 'Too many requests. Try again in a moment.' : c === 'offline' ? 'AI service unavailable. Open the deployed app, or run wardrobe-server.py locally at http://localhost:8765.' : c === 'misconfigured' ? 'The AI service is not configured. Ask the app administrator to check the Anthropic API key.' : c === 'signed_out' ? 'Your sign-in has expired. Sign out in Settings, sign back in, then try again.' : c === 'refused' ? 'The AI could not help with this one. Try rewording it.' : c === 'no_ai' ? 'Claude is not installed on this computer, so AI styling is off.' : c === 'timeout' ? 'AI took too long to answer. Your outfits are unchanged. Try again.' : 'Could not reach AI. Your outfits are unchanged.';
   } finally { ctl = null; busyOcc = null; setBusy(false); renderToday(); }
 }
 aiBtn.addEventListener('click', () => { if (ctl) ctl.abort(); else runAI(occasion); });
@@ -1014,7 +1014,7 @@ async function run() {
     if (r) { res = r; view = 'result'; store(); toast('Your style profile is ready'); } else err = 'The stylist\'s answer was incomplete. Please try again.';
   } catch (e) {
     const c = e && e.code;
-    err = c === 'cancelled' ? '' : c === 'not_granted' ? 'Allow AI access to use this button.' : c === 'rate_limited' ? 'Too many requests. Try again in a moment.' : c === 'offline' ? 'AI service unavailable. Open the deployed app, or run wardrobe-server.py locally at http://localhost:8765.' : c === 'misconfigured' ? 'The AI service is not configured. Ask the app administrator to check the Anthropic API key.' : c === 'no_ai' ? 'Claude is not installed on this computer, so the AI stylist is off.' : c === 'timeout' ? 'The AI stylist took too long to answer. Please try again.' : 'Could not reach the AI stylist. Please try again.';
+    err = c === 'cancelled' ? '' : c === 'not_granted' ? 'Allow AI access to use this button.' : c === 'rate_limited' ? 'Too many requests. Try again in a moment.' : c === 'offline' ? 'AI service unavailable. Open the deployed app, or run wardrobe-server.py locally at http://localhost:8765.' : c === 'misconfigured' ? 'The AI service is not configured. Ask the app administrator to check the Anthropic API key.' : c === 'signed_out' ? 'Your sign-in has expired. Sign out in Settings, sign back in, then try again.' : c === 'refused' ? 'The AI could not help with this one. Try rewording it.' : c === 'no_ai' ? 'Claude is not installed on this computer, so the AI stylist is off.' : c === 'timeout' ? 'The AI stylist took too long to answer. Please try again.' : 'Could not reach the AI stylist. Please try again.';
   } finally { ctl = null; paint(); if (view === 'result') box.parentElement.scrollTop = 0; }
 }
 box.addEventListener('click', e => {
@@ -1137,7 +1137,7 @@ function check(raw, snap, page) {
 }
 async function readPage(link, signal) {
   try {
-    const r = await fetch('/api/product', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: link}), signal}), j = await r.json();
+    const r = await fetch('/api/product', {method: 'POST', headers: {'Content-Type': 'application/json', ...(window.authHeader ? await window.authHeader() : {})}, body: JSON.stringify({url: link}), signal}), j = await r.json();
     return r.ok ? j : {url: link, text: '', failed: j.code || 'unreachable'};
   } catch (e) { if (e && e.name === 'AbortError') throw Object.assign(new Error('stopped'), {code: 'cancelled'}); return {url: link, text: '', failed: 'offline'}; }
 }
@@ -1149,7 +1149,7 @@ async function run() {
   err = ''; res = null; ctl = new AbortController(); stage = 'Reading the shop page…'; paint();
   try {
     const page = /^https?:\/\//i.test(link) ? await readPage(link, ctl.signal) : {url: 'no link', text: ''};
-    if (page.failed && !pasted) { showExtra = true; err = (page.failed === 'bad_url' ? 'That link does not look like a public shop page.' : page.failed === 'offline' ? 'Shop page reader unavailable. Open the deployed app, or run wardrobe-server.py locally at http://localhost:8765.' : 'This shop does not let its page be read automatically.') + ' Paste the product name, material and size chart below, then check again.'; return; }
+    if (page.failed && !pasted) { showExtra = true; err = (page.failed === 'signed_out' ? 'Your sign-in has expired. Sign out in Settings, sign back in, then try again.' : page.failed === 'bad_url' ? 'That link does not look like a public shop page.' : page.failed === 'offline' ? 'Shop page reader unavailable. Open the deployed app, or run wardrobe-server.py locally at http://localhost:8765.' : 'This shop does not let its page be read automatically.') + ' Paste the product name, material and size chart below, then check again.'; return; }
     stage = 'Working out your size and wardrobe match…'; paint();
     const sample = (window.claude && window.claude.use ? await window.claude.use('sample') : null) || localAI, snap = ITEMS.filter(i => i.kept);
     let raw = null, r = null; // a reply is occasionally malformed, so ask once more before giving up
@@ -1159,7 +1159,7 @@ async function run() {
     else err = 'The answer was incomplete. Please try again.';
   } catch (e) {
     const c = e && e.code;
-    err = c === 'cancelled' ? '' : c === 'not_granted' ? 'Allow AI access to use this button.' : c === 'rate_limited' ? 'Too many requests. Try again in a moment.' : c === 'offline' ? 'AI service unavailable. Open the deployed app, or run wardrobe-server.py locally at http://localhost:8765.' : c === 'misconfigured' ? 'The AI service is not configured. Ask the app administrator to check the Anthropic API key.' : c === 'no_ai' ? 'Claude is not installed on this computer, so this check is off.' : c === 'timeout' ? 'The AI took too long to answer. Please try again.' : 'Could not reach the AI. Please try again.';
+    err = c === 'cancelled' ? '' : c === 'not_granted' ? 'Allow AI access to use this button.' : c === 'rate_limited' ? 'Too many requests. Try again in a moment.' : c === 'offline' ? 'AI service unavailable. Open the deployed app, or run wardrobe-server.py locally at http://localhost:8765.' : c === 'misconfigured' ? 'The AI service is not configured. Ask the app administrator to check the Anthropic API key.' : c === 'signed_out' ? 'Your sign-in has expired. Sign out in Settings, sign back in, then try again.' : c === 'refused' ? 'The AI could not help with this one. Try rewording it.' : c === 'no_ai' ? 'Claude is not installed on this computer, so this check is off.' : c === 'timeout' ? 'The AI took too long to answer. Please try again.' : 'Could not reach the AI. Please try again.';
   } finally { ctl = null; paint(); box.parentElement.scrollTop = 0; }
 }
 box.addEventListener('click', e => {
@@ -1264,7 +1264,7 @@ async function rvRun() {
     else rvErr = 'The answer was incomplete. Please try again.';
   } catch (e) {
     const c = e && e.code;
-    rvErr = c === 'cancelled' ? '' : c === 'not_granted' ? 'Allow AI access to use this button.' : c === 'rate_limited' ? 'Too many requests. Try again in a moment.' : c === 'offline' ? 'AI service unavailable. Open the deployed app, or run wardrobe-server.py locally at http://localhost:8765.' : c === 'misconfigured' ? 'The AI service is not configured. Ask the app administrator to check the Anthropic API key.' : c === 'no_ai' ? 'Claude is not installed on this computer, so this check is off.' : c === 'timeout' ? 'The AI took too long to answer. Please try again.' : 'Could not reach the AI. Please try again.';
+    rvErr = c === 'cancelled' ? '' : c === 'not_granted' ? 'Allow AI access to use this button.' : c === 'rate_limited' ? 'Too many requests. Try again in a moment.' : c === 'offline' ? 'AI service unavailable. Open the deployed app, or run wardrobe-server.py locally at http://localhost:8765.' : c === 'misconfigured' ? 'The AI service is not configured. Ask the app administrator to check the Anthropic API key.' : c === 'signed_out' ? 'Your sign-in has expired. Sign out in Settings, sign back in, then try again.' : c === 'refused' ? 'The AI could not help with this one. Try rewording it.' : c === 'no_ai' ? 'Claude is not installed on this computer, so this check is off.' : c === 'timeout' ? 'The AI took too long to answer. Please try again.' : 'Could not reach the AI. Please try again.';
   } finally { rvCtl = null; rvPaint(); }
 }
 rvBox.addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.id === 'rv-go') rvRun(); });
@@ -1604,6 +1604,9 @@ async function signedIn(u) {
     loadErr = String(e && (e.message || e)).slice(0, 160); fails++; showGate(navigator.onLine === false ? 'offline' : 'failed'); setTimeout(() => { if (!user) signedIn(u); }, Math.min(60000, 5000 * fails));
   }
 }
+
+// the deployed AI functions only answer signed-in people, so requests carry the sign-in token
+window.authHeader = async () => { try { const {data} = sb ? await sb.auth.getSession() : {data: {}}; return data.session ? {Authorization: 'Bearer ' + data.session.access_token} : {}; } catch (e) { return {}; } };
 
 // ---- background saving: new photos, changed pieces, removed pieces, then measurements and review
 window.cloudTouch = () => { if (user && ready) { clearTimeout(timer); timer = setTimeout(sync, 1000); } };
