@@ -11,8 +11,12 @@ server.
 1. Put this folder in a GitHub repository and import that repository in Vercel.
    Set the Vercel project **Root Directory** to this folder.
 2. In Vercel, open **Settings → Environment Variables** and add:
-   - `ANTHROPIC_API_KEY`: your Anthropic API key. Add it only in Vercel; never
-     put it in `index.html` or commit it to Git.
+   - `ANTHROPIC_API_KEY` (optional): your Anthropic API key. Add it only in
+     Vercel; never put it in `index.html` or commit it to Git. Without it the
+     app runs with AI switched off: accounts, the closet, photos, measurements
+     and Settings work, and the AI features (new outfit ideas, the style
+     profile, size checks and the wardrobe review) say they are switched off.
+     Add the key and redeploy to turn them on.
    - `ANTHROPIC_MODEL` (optional): leave it unset to use `claude-sonnet-5-5`.
      The request uses Anthropic's automatic fallback (`fallbacks: "default"`),
      so a different model must support that too.

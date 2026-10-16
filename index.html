@@ -80,7 +80,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 </div></section>
 <section class="screen" id="s-shop" hidden><div style="width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;background:#FFFFFF;color:#1E1E1E;font-family:'Hanken Grotesk',sans-serif">
 <main style="flex:1;padding:24px 16px 16px;display:flex;flex-direction:column;gap:16px;overflow-y:auto;min-height:0">
-<div><h1 style="margin:0;font-size:32px;line-height:1.1;font-family:'Playfair Display',serif;font-weight:500">Smart <em style="color:#7A5C32">shopping</em></h1><div style="font-size:14px;color:#5A554D;margin-top:4px">Find your size, edit your wardrobe</div></div>
+<div><h1 style="margin:0;font-size:32px;line-height:1.1;font-family:'Playfair Display',serif;font-weight:500">Smart <em style="color:#7A5C32">shopping</em></h1><div class="ai-only" style="font-size:14px;color:#5A554D;margin-top:4px">Find your size, edit your wardrobe</div></div>
 <div id="sp-body" style="display:flex;flex-direction:column;gap:16px"></div>
 <div id="sp-review" style="display:flex;flex-direction:column;gap:16px"></div>
 </main>
@@ -109,6 +109,15 @@ function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.classList.remove('act'); t.classList.add('on');
   clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 1800);
 }
+
+// AI is optional. The published app answers GET /api/style with {ai: false} when no Anthropic key is set up;
+// the AI features then explain that instead of offering buttons that would fail. The local server has AI.
+window.AI_OFF = false;
+const AI_OFF_TEXT = 'AI is switched off in this version of the app.';
+fetch('/api/style', {cache: 'no-store'}).then(r => r.ok ? r.json() : null).then(j => {
+  if (j && j.ai === false) { window.AI_OFF = true; document.documentElement.classList.add('ai-off'); window.dispatchEvent(new Event('wardrobe:ai')); }
+}).catch(() => {});
+document.head.insertAdjacentHTML('beforeend', '<style>.ai-off #ai-btn,.ai-off #occ-new,.ai-off .ai-only{display:none!important}</style>');
 
 // bottom nav: same order on every screen
 $$('.screen nav').forEach(nav => $$('a', nav).forEach((a, i) => a.addEventListener('click', e => { e.preventDefault(); go(['settings', 'closet', 'today', 'measure', 'shop'][i]); })));
@@ -644,6 +653,7 @@ function renderToday() {
   const bar = (ai || custom) ? '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:#5E4522;background:#F1ECE2;border-radius:12px;padding:6px 6px 6px 14px"><span>' + (ai ? 'AI styled for this occasion' : 'Your occasion') + '</span><span>' + (ai && !custom ? btn('ai-reset', 'Back to presets') : '') + (custom ? btn('occ-rm', 'Remove') : '') + '</span></div>' : '';
   const empty = busyOcc === occasion && !list.length ? 'Styling outfits for “' + esc(occasion) + '”…'
     : custom ? 'No outfits yet. Tap Regenerate with AI to style this occasion.'
+    : window.AI_OFF ? 'No ready-made outfits for this occasion. New outfit ideas use AI, which is switched off in this version of the app.'
     : 'Your closet is missing pieces for this occasion. Add or restore items to see outfits.';
   outBox.innerHTML = bar + (list.map(outfitHTML).join('') || '<div style="padding:24px 8px;text-align:center;font-size:14px;color:#5A554D">' + empty + '</div>');
   outBox.style.opacity = busyOcc === occasion && list.length ? '.5' : '';
@@ -762,6 +772,7 @@ async function runAI(occ) {
   } finally { ctl = null; busyOcc = null; setBusy(false); renderToday(); }
 }
 aiBtn.addEventListener('click', () => { if (ctl) ctl.abort(); else runAI(occasion); });
+window.addEventListener('wardrobe:ai', () => { aiNote.textContent = 'New outfit ideas use AI. ' + AI_OFF_TEXT; composerOpen = false; renderOcc(); renderToday(); });
 
 const go0 = go; go = name => { go0(name); if (name === 'today') renderToday(); }; // pick up closet edits
 renderOcc(); renderToday();
@@ -863,6 +874,7 @@ let m = {height: '', shoulder: '', bust: '', waist: '', hips: '', leg: '', weigh
 const loadSaved = () => { try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.m) { Object.keys(m).forEach(k => m[k] = txtOf(s.m[k], 60)); if (!skinOf(m.skin)) m.skin = ''; res = s.r && s.r.looks && s.r.looks.everyday && s.r.looks.everyday.top && s.r.looks.everyday.top.type ? s.r : null; if (res) view = 'result'; } } catch (e) {} };
 loadSaved();
 const store = () => { try { localStorage.setItem(KEY, JSON.stringify({m, r: res})); } catch (e) {} if (window.cloudTouch) cloudTouch(); };
+window.addEventListener('wardrobe:ai', () => { if (!ctl) paint(); });
 window.addEventListener('wardrobe:cloud', () => { if (ctl) return; Object.keys(m).forEach(k => m[k] = ''); res = null; view = 'form'; err = ''; bad = []; loadSaved(); paint(); }); // the account's copy arrived
 
 const num = f => '<div style="display:flex;flex-direction:column;gap:6px"><label for="ms-' + f[0] + '" style="' + LAB + '">' + f[1].toUpperCase() + '</label>' +
@@ -890,8 +902,9 @@ function formHTML() {
       '<div style="' + HINT + '">Turn your screen brightness up and stand in daylight. Hold the inside of your wrist or your jawline next to the screen and tap the closest match.</div>' + skins() +
       '<div style="' + HINT + '">Used to read your skin tone and pick your most flattering colours. Screens vary, so the closest match is enough.</div></div>' +
     '<div id="ms-err" role="alert" style="font-size:13px;font-weight:500;color:#B3261E;line-height:1.4"' + (err ? '' : ' hidden') + '>' + esc(err) + '</div>' +
+    (window.AI_OFF ? '<div role="status" style="' + HINT + ';font-size:13px;text-align:center;background:#F1ECE2;border-radius:12px;padding:12px">Your measurements are saved as you type. The AI style profile is switched off in this version of the app.</div>' :
     '<button id="ms-go" style="' + PRI + '">' + (ctl ? 'Stop' : res ? 'Update my style profile' : 'Find my style profile') + '</button>' +
-    '<div role="status" style="' + HINT + ';text-align:center">' + (ctl ? 'Your stylist is reading your proportions and colouring…' : 'Your saved details stay in this browser. When you tap the button, relevant details are sent to Anthropic to create your style profile.') + '</div>';
+    '<div role="status" style="' + HINT + ';text-align:center">' + (ctl ? 'Your stylist is reading your proportions and colouring…' : 'Your measurements are saved to your account as you type. When you tap the button, relevant details are sent to Anthropic to create your style profile.') + '</div>');
 }
 const sil = s => { const d = SIL[s.id];
   return '<div style="display:flex;gap:12px;align-items:center"><svg width="48" height="64" viewBox="0 0 48 64" fill="#F1ECE2" stroke="#1E1E1E" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true" style="flex:none"><path d="' + d[1] + '"/>' + (d[2] ? '<path d="' + d[2] + '" fill="none"/>' : '') + '</svg>' +
@@ -1096,6 +1109,8 @@ function resultHTML() {
     '<p style="margin:0;' + HINT + ';text-align:center">AI guidance from the shop page and your measurements. Check the shop\'s return policy before buying.</p>';
 }
 function paint() {
+  if (window.AI_OFF) { box.innerHTML = '<section style="' + CARD + ';background:#F1ECE2;border-color:#F1ECE2"><div style="font-size:15px;font-weight:600">Smart shopping is switched off</div>' +
+    '<div style="font-size:14px;line-height:1.5">Size checks and the wardrobe review use AI, which is switched off in this version of the app. Your closet and measurements are still saved.</div></section>'; return; }
   box.innerHTML = res && !ctl ? resultHTML() : formHTML(profile());
   const im = $('#sp-img', box); if (im) im.addEventListener('error', () => im.remove());
 }
@@ -1220,7 +1235,8 @@ function rvHTML() {
       '<div style="' + HINT + '">Paste a shop link above to check the size.</div></section>' : '') +
     '<section style="' + CARD + ';border:0;padding:0">' + status + btn + '<p style="margin:0;' + HINT + ';text-align:center">Garment sizes aren\'t recorded, so try on before letting go.</p></section>';
 }
-function rvPaint() { rvBox.innerHTML = rvHTML(); }
+function rvPaint() { rvBox.innerHTML = window.AI_OFF ? '' : rvHTML(); }
+window.addEventListener('wardrobe:ai', () => { paint(); rvPaint(); });
 
 function rvAsk(p, snap) {
   const m = p.m, r = p.r, closet = snap.map((it, i) => i + ' | ' + it.n + ' | ' + it.cat + ' | ' + (it.colour || '-') + ' | ' + it.fab + ' | breathability ' + it.br + '/5 | ' + it.formality);
@@ -1373,7 +1389,7 @@ function paintGate() {
   else h = '<div style="display:flex;flex-direction:column;gap:10px"><h1 id="gate-title" style="margin:0;font:500 34px/1.1 \'Playfair Display\',serif">Your wardrobe, <em style="color:#7A5C32">styled for Singapore</em></h1>' +
       p('Photograph your clothes once, then get outfits that work in the heat and the aircon, and the right size before you buy.', 15) + '</div>' +
     '<ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:1.4">' +
-      [['1', 'Add your clothes from photos'], ['2', 'Add your measurements'], ['3', 'Get outfits, size checks and a wardrobe review']].map(s =>
+      [['1', 'Add your clothes from photos'], ['2', 'Add your measurements'], ['3', window.AI_OFF ? 'Keep your closet with you on any device' : 'Get outfits, size checks and a wardrobe review']].map(s =>
         '<li style="display:flex;gap:10px;align-items:center"><span style="flex:none;width:28px;height:28px;border-radius:14px;background:#F1ECE2;color:#5E4522;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px">' + s[0] + '</span>' + s[1] + '</li>').join('') + '</ul>' +
     '<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px"><label for="gate-pin" style="' + LAB + '">YOUR PIN</label>' +
       '<input id="gate-pin" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="7" placeholder="e.g. SL1234" aria-describedby="gate-pin-hint" value="' + esc(pinNow) + '" style="min-height:48px;box-sizing:border-box;border:1px solid #E6E2DA;border-radius:10px;padding:0 12px;font:500 17px \'Hanken Grotesk\',sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#1E1E1E;width:100%">' +
@@ -1545,8 +1561,9 @@ function paintStart() {
   startBox.innerHTML = all
     ? '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px"><h2 id="start-title" style="margin:0;font:500 22px \'Playfair Display\',serif">You\'re all set</h2>' +
         '<button id="start-x" aria-label="Hide getting started" style="flex:none;width:44px;height:44px;margin:-10px -10px 0 0;border:0;background:transparent;border-radius:22px;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E1E1E" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>' +
+      (window.AI_OFF ? p('Your closet and measurements are saved to your account.', 14) :
       p('Your closet and measurements are in. Try what the app can do with them.', 14) +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button data-go="today" style="' + PRI + ';flex:1;min-height:48px;font-size:15px">Today\'s outfits</button><button data-go="shop" style="' + SEC + ';flex:1;background:transparent">Review closet</button></div>'
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><button data-go="today" style="' + PRI + ';flex:1;min-height:48px;font-size:15px">Today\'s outfits</button><button data-go="shop" style="' + SEC + ';flex:1;background:transparent">Review closet</button></div>')
     : '<div><h2 id="start-title" style="margin:0;font:500 22px \'Playfair Display\',serif">Get started</h2>' + p('Two steps and the app can start styling you.', 14) + '</div>' +
       '<ol style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px">' + steps.map(s =>
         '<li style="display:flex;gap:10px;align-items:center">' + tick(s.done) + '<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;line-height:1.3' + (s.done ? ';color:#5A554D' : '') + '">' + s.title + (s.done ? '<span class="vh" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"> (done)</span>' : '') + '</div>' +
@@ -1654,6 +1671,7 @@ async function sync() {
 }
 window.addEventListener('online', () => { if (user) sync(); });
 window.addEventListener('wardrobe:cloud', paintStart); // measurements may have arrived
+window.addEventListener('wardrobe:ai', () => { paintStart(); if (!gate.hidden && gateView === 'form') { const v = ($('#gate-pin', gate) || {}).value; paintGate(); if (v) $('#gate-pin', gate).value = v; } });
 
 // ---- start: pick up a saved session, otherwise show the welcome screen
 async function start() {

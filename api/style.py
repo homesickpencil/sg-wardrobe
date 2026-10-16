@@ -133,4 +133,7 @@ class handler(BaseHTTPRequestHandler):
         return self.send_json(200, {"text": text})
 
     def do_GET(self):
-        return self.send_json(405, {"code": "method_not_allowed", "error": "Method not allowed"})
+        # lets the app know whether AI is set up, so it can switch its AI features off cleanly when it is not
+        if self.path.split("?")[0] == "/api/style":
+            return self.send_json(200, {"ai": bool(os.environ.get("ANTHROPIC_API_KEY"))})
+        return self.send_json(404, {"code": "not_found", "error": "Not found"})
